@@ -78,10 +78,11 @@ export const ListLabelsSchema = z.object({
 export type ListLabelsInput = z.infer<typeof ListLabelsSchema>;
 
 export const CreateDraftSchema = z.object({
-  to: z.array(z.string())
+  to: z.array(z.string().email("Recipient must be a valid email address"))
     .min(1, "At least one recipient is required")
     .describe("Array of recipient email addresses"),
   subject: z.string()
+    .refine(value => !/[\r\n]/.test(value), "Subject must not contain line breaks")
     .describe("Email subject line"),
   body: z.string()
     .describe("Email body content (plain text or HTML depending on content_type)"),
@@ -89,10 +90,10 @@ export const CreateDraftSchema = z.object({
     .optional()
     .default("text/plain")
     .describe("MIME content type for the email body (default: text/plain)"),
-  cc: z.array(z.string())
+  cc: z.array(z.string().email("CC recipient must be a valid email address"))
     .optional()
     .describe("Array of CC recipient email addresses"),
-  bcc: z.array(z.string())
+  bcc: z.array(z.string().email("BCC recipient must be a valid email address"))
     .optional()
     .describe("Array of BCC recipient email addresses"),
   reply_to_message_id: z.string()
@@ -101,6 +102,18 @@ export const CreateDraftSchema = z.object({
 }).strict();
 
 export type CreateDraftInput = z.infer<typeof CreateDraftSchema>;
+
+// Sending accepts the same message fields as drafting; the behavioral
+// distinction is explicit in the MCP tool name and description.
+export const SendEmailSchema = CreateDraftSchema;
+export type SendEmailInput = z.infer<typeof SendEmailSchema>;
+
+export const SendDraftSchema = z.object({
+  draft_id: z.string()
+    .min(1, "Draft ID is required")
+    .describe("The Gmail draft ID to send")
+}).strict();
+export type SendDraftInput = z.infer<typeof SendDraftSchema>;
 
 export const GetAttachmentSchema = z.object({
   message_id: z.string()

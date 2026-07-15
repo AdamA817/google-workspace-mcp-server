@@ -8,6 +8,8 @@ import {
   GetThreadSchema,
   ListLabelsSchema,
   CreateDraftSchema,
+  SendEmailSchema,
+  SendDraftSchema,
   GetAttachmentSchema,
   ListAttachmentsSchema,
   type ListMessagesInput,
@@ -16,6 +18,8 @@ import {
   type GetThreadInput,
   type ListLabelsInput,
   type CreateDraftInput,
+  type SendEmailInput,
+  type SendDraftInput,
   type GetAttachmentInput,
   type ListAttachmentsInput
 } from "../schemas/gmail.js";
@@ -679,6 +683,156 @@ Examples:
           content: [{
             type: "text",
             text: `Draft created successfully.\n\n**Draft ID**: ${output.draftId}\n**To**: ${params.to.join(", ")}\n**Subject**: ${params.subject}\n\nThe draft is saved in your Gmail Drafts folder. It will NOT be sent automatically.`
+          }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: handleGoogleError(error) }]
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    "gmail_send_email",
+    {
+      title: "Send Gmail Email",
+      description: `Send an email immediately through Gmail. This is not a draft operation.
+
+Only call this tool when the user has explicitly requested that the message be sent.
+
+Args:
+  - to (string[]): Array of recipient email addresses (required)
+  - subject (string): Email subject line
+  - body (string): Email body content
+  - content_type (string, optional): "text/plain" (default) or "text/html"
+  - cc (string[], optional): Array of CC recipient email addresses
+  - bcc (string[], optional): Array of BCC recipient email addresses
+  - reply_to_message_id (string, optional): Gmail message ID whose thread should receive the reply
+
+Returns:
+  {
+    "messageId": string,
+    "threadId": string,
+    "labelIds": string[]
+  }`,
+      inputSchema: SendEmailSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params: SendEmailInput) => {
+      try {
+        const gmail = getGmailClient();
+        const headers = [
+          `To: ${params.to.join(", ")}`,
+          `Subject: ${params.subject}`
+        ];
+
+        if (params.cc && params.cc.length > 0) {
+          headers.push(`Cc: ${params.cc.join(", ")}`);
+        }
+        if (params.bcc && params.bcc.length > 0) {
+          headers.push(`Bcc: ${params.bcc.join(", ")}`);
+        }
+
+        const requestBody: { raw: string; threadId?: string } = {
+          raw: Buffer.from([
+            ...headers,
+            `MIME-Version: 1.0`,
+            `Content-Type: ${params.content_type || "text/plain"}; charset=utf-8`,
+            `Content-Transfer-Encoding: 8bit`,
+            "",
+            params.body
+          ].join("\r\n"))
+            .toString("base64")
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "")
+        };
+
+        if (params.reply_to_message_id) {
+          const originalMsg = await gmail.users.messages.get({
+            userId: "me",
+            id: params.reply_to_message_id,
+            format: "minimal"
+          });
+          if (originalMsg.data.threadId) {
+            requestBody.threadId = originalMsg.data.threadId;
+          }
+        }
+
+        const response = await gmail.users.messages.send({
+          userId: "me",
+          requestBody
+        });
+
+        const output = {
+          messageId: response.data.id || "",
+          threadId: response.data.threadId || "",
+          labelIds: response.data.labelIds || []
+        };
+
+        return {
+          content: [{
+            type: "text",
+            text: `Email sent successfully.\n\n**Message ID**: ${output.messageId}\n**Thread ID**: ${output.threadId}\n**To**: ${params.to.join(", ")}\n**Subject**: ${params.subject}`
+          }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: handleGoogleError(error) }]
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    "gmail_send_draft",
+    {
+      title: "Send Gmail Draft",
+      description: `Send an existing Gmail draft immediately.
+
+Only call this tool when the user has explicitly approved sending that draft.
+
+Args:
+  - draft_id (string): Gmail draft ID returned by gmail_create_draft
+
+Returns:
+  {
+    "messageId": string,
+    "threadId": string,
+    "labelIds": string[]
+  }`,
+      inputSchema: SendDraftSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params: SendDraftInput) => {
+      try {
+        const gmail = getGmailClient();
+        const response = await gmail.users.drafts.send({
+          userId: "me",
+          requestBody: { id: params.draft_id }
+        });
+        const output = {
+          messageId: response.data.id || "",
+          threadId: response.data.threadId || "",
+          labelIds: response.data.labelIds || []
+        };
+        return {
+          content: [{
+            type: "text",
+            text: `Draft sent successfully.\n\n**Draft ID**: ${params.draft_id}\n**Message ID**: ${output.messageId}\n**Thread ID**: ${output.threadId}`
           }],
           structuredContent: output
         };
