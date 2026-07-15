@@ -35,6 +35,12 @@ function decodeBase64(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
 }
 
+function encodeHeaderValue(value: string): string {
+  return /^[\x20-\x7e]*$/.test(value)
+    ? value
+    : `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`;
+}
+
 function extractBody(payload: gmail_v1.Schema$MessagePart | undefined): string {
   if (!payload) return "";
 
@@ -628,7 +634,7 @@ Examples:
         // Build email headers
         const headers = [
           `To: ${params.to.join(", ")}`,
-          `Subject: ${params.subject}`
+          `Subject: ${encodeHeaderValue(params.subject)}`
         ];
 
         if (params.cc && params.cc.length > 0) {
@@ -730,7 +736,7 @@ Returns:
         const gmail = getGmailClient();
         const headers = [
           `To: ${params.to.join(", ")}`,
-          `Subject: ${params.subject}`
+          `Subject: ${encodeHeaderValue(params.subject)}`
         ];
 
         if (params.cc && params.cc.length > 0) {
