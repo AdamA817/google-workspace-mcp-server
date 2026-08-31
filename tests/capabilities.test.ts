@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { CANONICAL_MUTATION_CAPABILITIES } from "../src/capabilities.js";
+import {
+  CANONICAL_MUTATION_CAPABILITIES,
+  CANONICAL_READ_ONLY_CAPABILITIES,
+  withCanonicalMutationSurface
+} from "../src/capabilities.js";
 import { CreateCalendarSchema } from "../src/schemas/calendar.js";
 import { CreateFolderSchema } from "../src/schemas/drive.js";
 import { registerCalendarTools } from "../src/tools/calendar.js";
@@ -27,14 +31,12 @@ interface RegisteredTool {
   handler: ToolHandler;
 }
 
-const EXPECTED_TOOL_NAMES = [
-  "calendar_create_calendar",
+const EXPECTED_READ_ONLY_TOOL_NAMES = [
   "calendar_freebusy_query",
   "calendar_get_event",
   "calendar_list_calendars",
   "calendar_list_events",
   "docs_get_document",
-  "drive_create_folder",
   "drive_get_file",
   "drive_list_comments",
   "drive_list_files",
@@ -49,6 +51,16 @@ const EXPECTED_TOOL_NAMES = [
   "sheets_batch_get_values",
   "sheets_get_spreadsheet",
   "sheets_get_values"
+].sort();
+
+const EXPECTED_MUTATION_TOOL_NAMES = [
+  "calendar_create_calendar",
+  "drive_create_folder"
+].sort();
+
+const EXPECTED_TOOL_NAMES = [
+  ...EXPECTED_READ_ONLY_TOOL_NAMES,
+  ...EXPECTED_MUTATION_TOOL_NAMES
 ].sort();
 
 class RecordingServer {
@@ -184,7 +196,33 @@ test("all five modules advertise the exact expected tool inventory", () => {
   );
 });
 
-test("the exposed mutation surface contains only the two canonical capabilities", () => {
+test("the canonical guard preserves every read-only name and rejects annotation-only authorization", () => {
+  assert.deepEqual(
+    [...CANONICAL_READ_ONLY_CAPABILITIES].sort(),
+    EXPECTED_READ_ONLY_TOOL_NAMES
+  );
+
+  const server = new RecordingServer();
+  const guardedServer = withCanonicalMutationSurface(server.asMcpServer());
+  const handler: ToolHandler = async () => ({ content: [] });
+
+  for (const name of EXPECTED_READ_ONLY_TOOL_NAMES) {
+    guardedServer.registerTool(
+      name,
+      { annotations: { readOnlyHint: false } },
+      handler
+    );
+  }
+  guardedServer.registerTool(
+    "forbidden_annotation_claim",
+    { annotations: { readOnlyHint: true } },
+    handler
+  );
+
+  assert.deepEqual(server.tools.map(tool => tool.name), EXPECTED_READ_ONLY_TOOL_NAMES);
+});
+
+test("the advertised mutation names are exactly the two canonical capabilities", () => {
   const server = new RecordingServer();
   const mcpServer = server.asMcpServer();
 
@@ -194,12 +232,17 @@ test("the exposed mutation surface contains only the two canonical capabilities"
   registerGmailTools(mcpServer);
   registerCalendarTools(mcpServer);
 
-  const mutationNames = server.tools
-    .filter(tool => tool.config.annotations?.readOnlyHint !== true)
-    .map(tool => tool.name)
+  const advertisedNames = server.tools.map(tool => tool.name);
+  const advertisedReadOnlyNames = advertisedNames
+    .filter(name => EXPECTED_READ_ONLY_TOOL_NAMES.includes(name))
+    .sort();
+  const mutationNames = advertisedNames
+    .filter(name => !EXPECTED_READ_ONLY_TOOL_NAMES.includes(name))
     .sort();
 
-  assert.deepEqual(mutationNames, [...CANONICAL_MUTATION_CAPABILITIES].sort());
+  assert.deepEqual(advertisedReadOnlyNames, EXPECTED_READ_ONLY_TOOL_NAMES);
+  assert.deepEqual(mutationNames, EXPECTED_MUTATION_TOOL_NAMES);
+  assert.deepEqual([...CANONICAL_MUTATION_CAPABILITIES].sort(), EXPECTED_MUTATION_TOOL_NAMES);
 
   const forbiddenMutation = /(shar|permission|public.?link|event|file|document|gmail)/i;
   assert.deepEqual(mutationNames.filter(name => forbiddenMutation.test(name)), []);
