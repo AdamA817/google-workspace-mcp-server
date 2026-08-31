@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withCanonicalMutationSurface } from "../capabilities.js";
 import { getDocsClient, handleGoogleError } from "../services/google-auth.js";
 import {
   GetDocumentSchema,
@@ -33,6 +34,8 @@ function extractTextFromBody(body: docs_v1.Schema$Body | null | undefined): stri
 }
 
 export function registerDocsTools(server: McpServer): void {
+  server = withCanonicalMutationSurface(server);
+
   server.registerTool(
     "docs_get_document",
     {

@@ -9,6 +9,14 @@ export const ListCalendarsSchema = z.object({
 
 export type ListCalendarsInput = z.infer<typeof ListCalendarsSchema>;
 
+export const CreateCalendarSchema = z.object({
+  name: z.string()
+    .refine(name => name.trim().length > 0, "Calendar name is required")
+    .describe("Exact name to give the new private calendar")
+}).strict();
+
+export type CreateCalendarInput = z.infer<typeof CreateCalendarSchema>;
+
 export const ListEventsSchema = z.object({
   calendar_id: z.string()
     .default("primary")

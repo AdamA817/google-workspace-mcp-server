@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withCanonicalMutationSurface } from "../capabilities.js";
 import type { gmail_v1 } from "googleapis";
 import { getGmailClient, handleGoogleError } from "../services/google-auth.js";
 import {
@@ -93,6 +94,8 @@ function formatMessageForMarkdown(msg: MessageData): string {
 }
 
 export function registerGmailTools(server: McpServer): void {
+  server = withCanonicalMutationSurface(server);
+
   server.registerTool(
     "gmail_list_messages",
     {

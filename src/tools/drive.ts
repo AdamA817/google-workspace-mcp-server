@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getDriveClient, handleGoogleError } from "../services/google-auth.js";
+import { withCanonicalMutationSurface } from "../capabilities.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -12,6 +13,7 @@ import {
   ListFilesSchema,
   SearchFilesSchema,
   GetFileSchema,
+  CreateFolderSchema,
   CopyFileSchema,
   type ListCommentsInput,
   type CreateCommentInput,
@@ -21,6 +23,7 @@ import {
   type ListFilesInput,
   type SearchFilesInput,
   type GetFileInput,
+  type CreateFolderInput,
   type CopyFileInput
 } from "../schemas/drive.js";
 import { ResponseFormat } from "../constants.js";
@@ -32,6 +35,8 @@ const MIME_TYPE_MAP: Record<string, string> = {
   presentations: "application/vnd.google-apps.presentation",
   folders: "application/vnd.google-apps.folder"
 };
+
+const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 
 const MIME_TYPE_DISPLAY: Record<string, string> = {
   "application/vnd.google-apps.document": "Google Doc",
@@ -99,7 +104,12 @@ function formatCommentForMarkdown(comment: CommentData): string {
   return lines.join("\n");
 }
 
-export function registerDriveTools(server: McpServer): void {
+export function registerDriveTools(
+  server: McpServer,
+  getClient: typeof getDriveClient = getDriveClient
+): void {
+  server = withCanonicalMutationSurface(server);
+
   server.registerTool(
     "drive_list_comments",
     {
@@ -139,7 +149,7 @@ Returns:
     },
     async (params: ListCommentsInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         const response = await drive.comments.list({
           fileId: params.file_id,
@@ -237,7 +247,7 @@ Examples:
     },
     async (params: CreateCommentInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         const requestBody: Record<string, unknown> = {
           content: params.content
@@ -305,7 +315,7 @@ Returns:
     },
     async (params: ReplyToCommentInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         const response = await drive.replies.create({
           fileId: params.file_id,
@@ -363,7 +373,7 @@ Returns:
     },
     async (params: ResolveCommentInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         await drive.comments.update({
           fileId: params.file_id,
@@ -421,7 +431,7 @@ Note: This action cannot be undone.`,
     },
     async (params: DeleteCommentInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         await drive.comments.delete({
           fileId: params.file_id,
@@ -488,7 +498,7 @@ Returns:
     },
     async (params: ListFilesInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         let q = "trashed = false";
         if (params.mime_type !== "all") {
@@ -603,7 +613,7 @@ Examples:
     },
     async (params: SearchFilesInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         // Build search query - fullText searches name and content
         let q = `trashed = false and fullText contains '${params.query.replace(/'/g, "\\'")}'`;
@@ -699,7 +709,7 @@ Examples:
     },
     async (params: GetFileInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         // First get file metadata to determine type and name
         const metadata = await drive.files.get({
@@ -858,7 +868,7 @@ Examples:
     },
     async (params: CopyFileInput) => {
       try {
-        const drive = getDriveClient();
+        const drive = getClient();
 
         const requestBody: { name?: string; parents?: string[] } = {};
 
@@ -889,6 +899,64 @@ Examples:
           content: [{
             type: "text",
             text: `File copied successfully.\n\n**Name**: ${output.name}\n**ID**: ${output.id}\n**Type**: ${typeDisplay}\n**Link**: ${output.webViewLink}`
+          }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: handleGoogleError(error) }]
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    "drive_create_folder",
+    {
+      title: "Create Private Drive Folder",
+      description: `Create a private Google Drive folder with the exact requested name.
+
+Args:
+  - name (string): Exact name for the new folder
+
+Returns:
+  The Google Drive identifier and fields read back from the create response.`,
+      inputSchema: CreateFolderSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params: CreateFolderInput) => {
+      try {
+        const drive = getClient();
+
+        const response = await drive.files.create({
+          requestBody: {
+            name: params.name,
+            mimeType: FOLDER_MIME_TYPE
+          },
+          fields: "id,name,mimeType,createdTime,modifiedTime,parents,trashed",
+          ignoreDefaultVisibility: true
+        });
+
+        const created = response.data;
+        const output = {
+          id: created.id || "",
+          name: created.name ?? params.name,
+          mimeType: created.mimeType || FOLDER_MIME_TYPE,
+          createdTime: created.createdTime || undefined,
+          modifiedTime: created.modifiedTime || undefined,
+          parents: created.parents || [],
+          trashed: created.trashed || false
+        };
+
+        return {
+          content: [{
+            type: "text",
+            text: `Private Drive folder created successfully.\n\n**Name**: ${output.name}\n**ID**: ${output.id}`
           }],
           structuredContent: output
         };

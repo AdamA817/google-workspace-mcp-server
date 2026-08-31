@@ -1,11 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getCalendarClient, handleGoogleError } from "../services/google-auth.js";
+import { withCanonicalMutationSurface } from "../capabilities.js";
 import {
   ListCalendarsSchema,
+  CreateCalendarSchema,
   ListEventsSchema,
   GetEventSchema,
   FreeBusyQuerySchema,
   type ListCalendarsInput,
+  type CreateCalendarInput,
   type ListEventsInput,
   type GetEventInput,
   type FreeBusyQueryInput
@@ -53,7 +56,12 @@ function formatEventForMarkdown(event: EventData): string {
   return lines.join("\n");
 }
 
-export function registerCalendarTools(server: McpServer): void {
+export function registerCalendarTools(
+  server: McpServer,
+  getClient: typeof getCalendarClient = getCalendarClient
+): void {
+  server = withCanonicalMutationSurface(server);
+
   server.registerTool(
     "calendar_list_calendars",
     {
@@ -75,7 +83,7 @@ Returns:
     },
     async (params: ListCalendarsInput) => {
       try {
-        const calendar = getCalendarClient();
+        const calendar = getClient();
 
         const response = await calendar.calendarList.list();
 
@@ -136,6 +144,62 @@ Returns:
   );
 
   server.registerTool(
+    "calendar_create_calendar",
+    {
+      title: "Create Private Calendar",
+      description: `Create a private Google Calendar with the exact requested name.
+
+Args:
+  - name (string): Exact name/summary for the new calendar
+
+Returns:
+  The Google Calendar identifier and fields read back from the create response.`,
+      inputSchema: CreateCalendarSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params: CreateCalendarInput) => {
+      try {
+        const calendar = getClient();
+
+        const response = await calendar.calendars.insert({
+          requestBody: {
+            summary: params.name
+          },
+          fields: "id,summary,description,location,timeZone,etag"
+        });
+
+        const created = response.data;
+        const output = {
+          id: created.id || "",
+          name: created.summary ?? params.name,
+          summary: created.summary ?? params.name,
+          description: created.description || undefined,
+          location: created.location || undefined,
+          timeZone: created.timeZone || undefined,
+          etag: created.etag || undefined
+        };
+
+        return {
+          content: [{
+            type: "text",
+            text: `Private calendar created successfully.\n\n**Name**: ${output.name}\n**ID**: ${output.id}`
+          }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: handleGoogleError(error) }]
+        };
+      }
+    }
+  );
+
+  server.registerTool(
     "calendar_list_events",
     {
       title: "List Calendar Events",
@@ -169,7 +233,7 @@ Examples:
     },
     async (params: ListEventsInput) => {
       try {
-        const calendar = getCalendarClient();
+        const calendar = getClient();
 
         // Default to showing future events if no time range specified
         const timeMin = params.time_min || new Date().toISOString();
@@ -270,7 +334,7 @@ Returns:
     },
     async (params: GetEventInput) => {
       try {
-        const calendar = getCalendarClient();
+        const calendar = getClient();
 
         const response = await calendar.events.get({
           calendarId: params.calendar_id,
@@ -413,7 +477,7 @@ Examples:
     },
     async (params: FreeBusyQueryInput) => {
       try {
-        const calendar = getCalendarClient();
+        const calendar = getClient();
 
         const response = await calendar.freebusy.query({
           requestBody: {

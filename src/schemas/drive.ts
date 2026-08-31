@@ -128,6 +128,14 @@ export const GetFileSchema = z.object({
 
 export type GetFileInput = z.infer<typeof GetFileSchema>;
 
+export const CreateFolderSchema = z.object({
+  name: z.string()
+    .refine(name => name.trim().length > 0, "Folder name is required")
+    .describe("Exact name to give the new private Drive folder")
+}).strict();
+
+export type CreateFolderInput = z.infer<typeof CreateFolderSchema>;
+
 export const CopyFileSchema = z.object({
   file_id: z.string()
     .min(1, "File ID is required")

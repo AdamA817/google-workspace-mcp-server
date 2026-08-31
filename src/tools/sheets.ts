@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { withCanonicalMutationSurface } from "../capabilities.js";
 import { getSheetsClient, handleGoogleError } from "../services/google-auth.js";
 import {
   GetSpreadsheetSchema,
@@ -251,6 +252,8 @@ function buildPivotFilters(filters: PivotFilterInput[]): sheets_v4.Schema$PivotF
 }
 
 export function registerSheetsTools(server: McpServer): void {
+  server = withCanonicalMutationSurface(server);
+
   // Get Spreadsheet metadata
   server.registerTool(
     "sheets_get_spreadsheet",
