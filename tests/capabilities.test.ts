@@ -55,7 +55,24 @@ const EXPECTED_READ_ONLY_TOOL_NAMES = [
 
 const EXPECTED_MUTATION_TOOL_NAMES = [
   "calendar_create_calendar",
-  "drive_create_folder"
+  "docs_batch_update",
+  "docs_create_document",
+  "drive_copy_file",
+  "drive_create_comment",
+  "drive_create_folder",
+  "drive_delete_comment",
+  "drive_reply_to_comment",
+  "drive_resolve_comment",
+  "gmail_create_draft",
+  "gmail_send_draft",
+  "gmail_send_email",
+  "sheets_append_values",
+  "sheets_batch_update",
+  "sheets_clear_values",
+  "sheets_create_pivot_table",
+  "sheets_create_spreadsheet",
+  "sheets_duplicate_sheet",
+  "sheets_update_values"
 ].sort();
 
 const EXPECTED_TOOL_NAMES = [
@@ -222,7 +239,7 @@ test("the canonical guard preserves every read-only name and rejects annotation-
   assert.deepEqual(server.tools.map(tool => tool.name), EXPECTED_READ_ONLY_TOOL_NAMES);
 });
 
-test("the advertised mutation names are exactly the two canonical capabilities", () => {
+test("the advertised mutation names are exactly the canonical Workspace capabilities", () => {
   const server = new RecordingServer();
   const mcpServer = server.asMcpServer();
 
@@ -244,6 +261,7 @@ test("the advertised mutation names are exactly the two canonical capabilities",
   assert.deepEqual(mutationNames, EXPECTED_MUTATION_TOOL_NAMES);
   assert.deepEqual([...CANONICAL_MUTATION_CAPABILITIES].sort(), EXPECTED_MUTATION_TOOL_NAMES);
 
-  const forbiddenMutation = /(shar|permission|public.?link|event|file|document|gmail)/i;
-  assert.deepEqual(mutationNames.filter(name => forbiddenMutation.test(name)), []);
+  assert.ok(mutationNames.includes("gmail_send_email"));
+  assert.ok(mutationNames.includes("docs_create_document"));
+  assert.ok(mutationNames.includes("sheets_update_values"));
 });

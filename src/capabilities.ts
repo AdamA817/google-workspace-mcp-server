@@ -2,7 +2,24 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export const CANONICAL_MUTATION_CAPABILITIES = [
   "calendar_create_calendar",
-  "drive_create_folder"
+  "docs_batch_update",
+  "docs_create_document",
+  "drive_copy_file",
+  "drive_create_comment",
+  "drive_create_folder",
+  "drive_delete_comment",
+  "drive_reply_to_comment",
+  "drive_resolve_comment",
+  "gmail_create_draft",
+  "gmail_send_draft",
+  "gmail_send_email",
+  "sheets_append_values",
+  "sheets_batch_update",
+  "sheets_clear_values",
+  "sheets_create_pivot_table",
+  "sheets_create_spreadsheet",
+  "sheets_duplicate_sheet",
+  "sheets_update_values"
 ] as const;
 
 export const CANONICAL_READ_ONLY_CAPABILITIES = [
