@@ -6,7 +6,11 @@ import {
   CANONICAL_READ_ONLY_CAPABILITIES,
   withCanonicalMutationSurface
 } from "../src/capabilities.js";
-import { CreateCalendarSchema } from "../src/schemas/calendar.js";
+import {
+  CreateCalendarSchema,
+  CreateEventSchema,
+  UpdateEventSchema
+} from "../src/schemas/calendar.js";
 import { CreateFolderSchema } from "../src/schemas/drive.js";
 import { registerCalendarTools } from "../src/tools/calendar.js";
 import { registerDocsTools } from "../src/tools/docs.js";
@@ -55,6 +59,9 @@ const EXPECTED_READ_ONLY_TOOL_NAMES = [
 
 const EXPECTED_MUTATION_TOOL_NAMES = [
   "calendar_create_calendar",
+  "calendar_create_event",
+  "calendar_delete_event",
+  "calendar_update_event",
   "docs_batch_update",
   "docs_create_document",
   "drive_copy_file",
@@ -108,6 +115,22 @@ test("name schemas reject missing/blank names and preserve exact valid names", (
     const exactName = "  Exact Ω Name  ";
     assert.equal(schema.parse({ name: exactName }).name, exactName);
   }
+});
+
+test("event schemas require coherent times and a meaningful update", () => {
+  assert.equal(CreateEventSchema.safeParse({ summary: "Job due" }).success, false);
+  assert.equal(CreateEventSchema.safeParse({
+    summary: "Job due",
+    start_datetime: "2026-09-18T09:00:00-05:00",
+    end_datetime: "2026-09-18T10:00:00-05:00"
+  }).success, true);
+  assert.equal(CreateEventSchema.safeParse({
+    summary: "Job due",
+    start_date: "2026-09-18",
+    end_datetime: "2026-09-19T00:00:00-05:00"
+  }).success, false);
+  assert.equal(UpdateEventSchema.safeParse({ event_id: "event-1" }).success, false);
+  assert.equal(UpdateEventSchema.safeParse({ event_id: "event-1", location: "Shop" }).success, true);
 });
 
 test("calendar_create_calendar sends only the exact summary and returns provider read-back fields", async () => {

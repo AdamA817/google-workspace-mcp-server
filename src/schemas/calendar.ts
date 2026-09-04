@@ -66,6 +66,55 @@ export const GetEventSchema = z.object({
 
 export type GetEventInput = z.infer<typeof GetEventSchema>;
 
+const EventFieldsSchema = z.object({
+  summary: z.string().min(1).optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  start_datetime: z.string().datetime({ offset: true }).optional(),
+  end_datetime: z.string().datetime({ offset: true }).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  time_zone: z.string().optional(),
+  attendees: z.array(z.string().email()).max(100).optional()
+}).strict();
+
+function validEventTimes(value: z.infer<typeof EventFieldsSchema>): boolean {
+  const timed = Boolean(value.start_datetime || value.end_datetime);
+  const allDay = Boolean(value.start_date || value.end_date);
+  if (timed && allDay) return false;
+  if (timed) return Boolean(value.start_datetime && value.end_datetime);
+  if (allDay) return Boolean(value.start_date && value.end_date);
+  return true;
+}
+
+export const CreateEventSchema = EventFieldsSchema.extend({
+  calendar_id: z.string().default("primary")
+}).refine(value => Boolean(value.summary && validEventTimes(value) &&
+  ((value.start_datetime && value.end_datetime) || (value.start_date && value.end_date))), {
+  message: "summary and one complete timed or all-day start/end pair are required"
+});
+
+export type CreateEventInput = z.infer<typeof CreateEventSchema>;
+
+export const UpdateEventSchema = EventFieldsSchema.extend({
+  calendar_id: z.string().default("primary"),
+  event_id: z.string().min(1)
+}).refine(value => validEventTimes(value), {
+  message: "supply a complete timed or all-day start/end pair"
+}).refine(value => Object.entries(value).some(([key, field]) =>
+  !["calendar_id", "event_id"].includes(key) && field !== undefined), {
+  message: "at least one event field is required"
+});
+
+export type UpdateEventInput = z.infer<typeof UpdateEventSchema>;
+
+export const DeleteEventSchema = z.object({
+  calendar_id: z.string().default("primary"),
+  event_id: z.string().min(1)
+}).strict();
+
+export type DeleteEventInput = z.infer<typeof DeleteEventSchema>;
+
 export const FreeBusyQuerySchema = z.object({
   time_min: z.string()
     .describe("Start of the time range (ISO 8601 format, e.g., '2024-01-15T00:00:00Z')"),

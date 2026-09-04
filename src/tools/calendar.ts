@@ -6,11 +6,17 @@ import {
   CreateCalendarSchema,
   ListEventsSchema,
   GetEventSchema,
+  CreateEventSchema,
+  UpdateEventSchema,
+  DeleteEventSchema,
   FreeBusyQuerySchema,
   type ListCalendarsInput,
   type CreateCalendarInput,
   type ListEventsInput,
   type GetEventInput,
+  type CreateEventInput,
+  type UpdateEventInput,
+  type DeleteEventInput,
   type FreeBusyQueryInput
 } from "../schemas/calendar.js";
 import { ResponseFormat } from "../constants.js";
@@ -54,6 +60,22 @@ function formatEventForMarkdown(event: EventData): string {
   }
 
   return lines.join("\n");
+}
+
+function eventTimes(params: CreateEventInput | UpdateEventInput): {
+  start?: { dateTime?: string; date?: string; timeZone?: string };
+  end?: { dateTime?: string; date?: string; timeZone?: string };
+} {
+  if (params.start_datetime && params.end_datetime) {
+    return {
+      start: { dateTime: params.start_datetime, timeZone: params.time_zone },
+      end: { dateTime: params.end_datetime, timeZone: params.time_zone }
+    };
+  }
+  if (params.start_date && params.end_date) {
+    return { start: { date: params.start_date }, end: { date: params.end_date } };
+  }
+  return {};
 }
 
 export function registerCalendarTools(
@@ -195,6 +217,124 @@ Returns:
         return {
           content: [{ type: "text", text: handleGoogleError(error) }]
         };
+      }
+    }
+  );
+
+  server.registerTool(
+    "calendar_create_event",
+    {
+      title: "Create Calendar Event",
+      description: "Create a timed or all-day event. External invitations may be sent when attendees are included.",
+      inputSchema: CreateEventSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
+    },
+    async (params: CreateEventInput) => {
+      try {
+        const response = await getClient().events.insert({
+          calendarId: params.calendar_id,
+          sendUpdates: params.attendees?.length ? "all" : "none",
+          requestBody: {
+            summary: params.summary,
+            description: params.description,
+            location: params.location,
+            attendees: params.attendees?.map(email => ({ email })),
+            ...eventTimes(params)
+          }
+        });
+        const output = {
+          id: response.data.id || "",
+          calendar_id: params.calendar_id,
+          summary: response.data.summary || params.summary,
+          status: response.data.status || "confirmed",
+          html_link: response.data.htmlLink || undefined
+        };
+        return {
+          content: [{ type: "text", text: `Calendar event created: ${output.summary} (${output.id})` }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleGoogleError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "calendar_update_event",
+    {
+      title: "Update Calendar Event",
+      description: "Update specified fields on an existing event. Attendee changes may send invitations.",
+      inputSchema: UpdateEventSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      }
+    },
+    async (params: UpdateEventInput) => {
+      try {
+        const response = await getClient().events.patch({
+          calendarId: params.calendar_id,
+          eventId: params.event_id,
+          sendUpdates: params.attendees ? "all" : "none",
+          requestBody: {
+            summary: params.summary,
+            description: params.description,
+            location: params.location,
+            attendees: params.attendees?.map(email => ({ email })),
+            ...eventTimes(params)
+          }
+        });
+        const output = {
+          id: response.data.id || params.event_id,
+          calendar_id: params.calendar_id,
+          summary: response.data.summary || params.summary || "(no title)",
+          status: response.data.status || "confirmed",
+          html_link: response.data.htmlLink || undefined
+        };
+        return {
+          content: [{ type: "text", text: `Calendar event updated: ${output.summary} (${output.id})` }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleGoogleError(error) }] };
+      }
+    }
+  );
+
+  server.registerTool(
+    "calendar_delete_event",
+    {
+      title: "Delete Calendar Event",
+      description: "Permanently delete an event and notify attendees.",
+      inputSchema: DeleteEventSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true
+      }
+    },
+    async (params: DeleteEventInput) => {
+      try {
+        await getClient().events.delete({
+          calendarId: params.calendar_id,
+          eventId: params.event_id,
+          sendUpdates: "all"
+        });
+        const output = { calendar_id: params.calendar_id, event_id: params.event_id, deleted: true };
+        return {
+          content: [{ type: "text", text: `Calendar event deleted: ${params.event_id}` }],
+          structuredContent: output
+        };
+      } catch (error) {
+        return { content: [{ type: "text", text: handleGoogleError(error) }] };
       }
     }
   );

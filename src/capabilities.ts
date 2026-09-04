@@ -2,6 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export const CANONICAL_MUTATION_CAPABILITIES = [
   "calendar_create_calendar",
+  "calendar_create_event",
+  "calendar_delete_event",
+  "calendar_update_event",
   "docs_batch_update",
   "docs_create_document",
   "drive_copy_file",
